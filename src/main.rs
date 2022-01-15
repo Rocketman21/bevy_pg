@@ -1,24 +1,25 @@
 use bevy::{input::mouse::MouseMotion, prelude::*};
 
 fn main() {
-	App::build()
+	App::new()
 		.insert_resource(Msaa { samples: 4 })
 		.insert_resource(WASDMovementSettings { targert_index: 0 })
 		.add_plugins(DefaultPlugins)
 		// .add_plugin(ClawMachinePlugin)
 		// .add_system(text_update_system.system())
-		.add_startup_system(setup.system())
-		.add_system(wasd_movement_system.system())
-		.add_system(rotate_with_mouse_system.system())
-		.add_system(game_state_control.system())
+		.add_startup_system(setup)
+		.add_system(wasd_movement_system)
+		.add_system(rotate_with_mouse_system)
+		.add_system(game_state_control)
 		.add_state(GameState::Play)
 		.run();
 }
 
-struct ClawMachinePlugin;
-struct ClawMachine;
+// struct ClawMachinePlugin;
+#[derive(Component)]
 struct MouseRotation;
 
+#[derive(Component)]
 struct WASDMovement;
 struct WASDMovementSettings {
 	targert_index: usize,
@@ -50,13 +51,13 @@ fn create_glass(
 		material: materials_resource.add(StandardMaterial {
 			base_color: Color::rgba(1.0, 1.0, 1.0, 0.159),
 			metallic: 0.717,
-			roughness: 0.095,
+			perceptual_roughness: 0.095,
+			alpha_mode: AlphaMode::Blend,
 			..Default::default()
 		}),
-		visible: Visible {
-			is_transparent: true,
-			..Default::default()
-		},
+		// visible: Visibility {
+		// 	..Default::default()
+		// },
 		transform,
 		..Default::default()
 	}
@@ -105,7 +106,7 @@ fn setup(
 			parent.spawn_scene(asset_server.load("claw.glb#Scene0"));
 		});
 
-	commands.spawn_bundle(LightBundle {
+	commands.spawn_bundle(PointLightBundle {
 		transform: Transform::from_translation(Vec3::new(4.0, 5.0, 4.0)),
 		..Default::default()
 	});

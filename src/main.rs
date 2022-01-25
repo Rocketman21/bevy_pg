@@ -1,16 +1,27 @@
-use bevy::{input::mouse::MouseMotion, prelude::*};
+use bevy::{
+	input::mouse::MouseMotion, prelude::*,
+	diagnostic::{Diagnostics, FrameTimeDiagnosticsPlugin},
+	gltf::Gltf,
+};
+use fixed_timestep_test::FixedTimestempTestPlugin;
+
+mod fixed_timestep_test;
 
 fn main() {
 	App::new()
 		.insert_resource(Msaa { samples: 4 })
-		.insert_resource(WASDMovementSettings { targert_index: 0 })
+		.insert_resource(WASDMovementSettings { target_index: 0 })
+		.init_resource::<GltfHandleStorage>()
 		.add_plugins(DefaultPlugins)
-		// .add_plugin(ClawMachinePlugin)
-		// .add_system(text_update_system.system())
+		.add_plugin(FrameTimeDiagnosticsPlugin::default())
+		// .add_plugin(FixedTimestempTestPlugin::default())
+		.add_system(text_update_system)
+		.add_startup_system(load_gltf)
+		.add_system(spawn_gltf)
 		.add_startup_system(setup)
 		.add_system(wasd_movement_system)
 		.add_system(rotate_with_mouse_system)
-		.add_system(game_state_control)
+		.add_system(game_state_control_system)
 		.add_state(GameState::Play)
 		.run();
 }
@@ -22,8 +33,10 @@ struct MouseRotation;
 #[derive(Component)]
 struct WASDMovement;
 struct WASDMovementSettings {
-	targert_index: usize,
+	target_index: usize,
 }
+#[derive(Default)]
+struct GltfHandleStorage(Handle<Gltf>);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum GameState {
@@ -31,80 +44,60 @@ enum GameState {
 	Pause,
 }
 
-// impl Plugin for ClawMachinePlugin {
-// 	fn build(&self, app: &mut AppBuilder) {
-// 		app
-// 			.add_startup_system(setup.system())
-// 			.add_system(wasd_movement_system.system())
-// 			.add_system(rotate_with_mouse_system.system());
-// 	}
-// }
+fn load_gltf(
+	mut commands: Commands,
+	asset_server: Res<AssetServer>,
+) {
+	commands.insert_resource(GltfHandleStorage(asset_server.load("claw_machine_bevy.glb")));
+}
 
-fn create_glass(
-	mesh_resource: &mut ResMut<Assets<Mesh>>,
-	materials_resource: &mut ResMut<Assets<StandardMaterial>>,
-	mesh: Mesh,
-	transform: Transform,
-) -> PbrBundle {
-	PbrBundle {
-		mesh: mesh_resource.add(mesh),
-		material: materials_resource.add(StandardMaterial {
-			base_color: Color::rgba(1.0, 1.0, 1.0, 0.159),
-			metallic: 0.717,
-			perceptual_roughness: 0.095,
-			alpha_mode: AlphaMode::Blend,
-			..Default::default()
-		}),
-		// visible: Visibility {
-		// 	..Default::default()
-		// },
-		transform,
-		..Default::default()
-	}
+fn spawn_gltf(
+	mut asset_events: EventReader<AssetEvent<Gltf>>,
+	assets: Res<Assets<Gltf>>,
+	gltf_handle_storage: Res<GltfHandleStorage>,
+	mut commands: Commands,
+) {
+	asset_events.iter().for_each(|event| {
+		if let AssetEvent::Created { handle } = event {
+			if handle == &gltf_handle_storage.0 {
+				let gltf = assets.get(handle).unwrap();
+
+				commands
+					.spawn_bundle((
+						Transform::from_xyz(0.0, 0.0, 0.0),
+						GlobalTransform::identity(),
+					))
+					.with_children(|parent| {
+						parent.spawn_scene(gltf.named_scenes["claw_machine"].clone());
+						parent.spawn_scene(gltf.named_scenes["claw"].clone()); //.insert(WASDMovement)
+					});
+			}
+		}
+	});
 }
 
 fn setup(
 	mut windows: ResMut<Windows>,
 	mut commands: Commands,
 	asset_server: Res<AssetServer>,
-	mut meshes: ResMut<Assets<Mesh>>,
-	mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
 	toggle_cursor(windows.get_primary_mut().unwrap(), false);
 
-	commands.spawn_scene(asset_server.load("claw_machine_transparent.glb#Scene0"));
+	// if let Some(gltf) = assets_gltf.get(&gltf_handle_storage.0) {
+	// 	commands.spawn_scene(gltf.scenes[0].clone());
 
-	// Glass
-	// commands.spawn_bundle(create_glass(
-	// 	&mut meshes,
-	// 	&mut materials,
-	// 	Mesh::from(shape::Box::new(1.7, 2.1, 1.7)),
-	// 	Transform::from_xyz(0.0, 2.6, 0.0),
-	// ));
+	// 	println!("handle {:?}", gltf.scenes[0].clone());
+	
+	
 
-	commands
-		.spawn_bundle((
-			Transform::from_xyz(0.0, 1.5, 0.0),
-			GlobalTransform::identity(),
-		))
-		.with_children(|parent| {
-			parent.spawn_bundle(create_glass(
-				&mut meshes,
-				&mut materials,
-				Mesh::from(shape::Quad::default()),
-				Transform::from_xyz(0.0, 0.0, 0.0),
-			));
-		})
-		.insert(WASDMovement);
-
-	commands
-		.spawn_bundle((
-			Transform::from_xyz(0.0, 2.0, 0.0),
-			GlobalTransform::identity(),
-		))
-		.with_children(|parent| {
-			parent.spawn_scene(asset_server.load("claw.glb#Scene0"));
-		});
+	// commands
+	// 	.spawn_bundle((
+	// 		Transform::from_xyz(0.0, 2.0, 0.0),
+	// 		GlobalTransform::identity(),
+	// 	))
+	// 	.with_children(|parent| {
+	// 		parent.spawn_scene(asset_server.load("claw.glb#Scene0"));
+	// 	});
 
 	commands.spawn_bundle(PointLightBundle {
 		transform: Transform::from_translation(Vec3::new(4.0, 5.0, 4.0)),
@@ -118,6 +111,8 @@ fn setup(
 		})
 		.insert(WASDMovement)
 		.insert(MouseRotation);
+
+	commands.spawn_bundle(UiCameraBundle::default());
 	
 	commands.spawn_bundle(TextBundle {
 		style: Style {
@@ -134,7 +129,7 @@ fn setup(
 			"FPS:",
 			TextStyle {
 				font: asset_server.load("fonts/Alata-Regular.ttf"),
-				font_size: 60.0,
+				font_size: 20.0,
 				color: Color::WHITE,
 			},
 			Default::default()
@@ -153,7 +148,7 @@ fn wasd_movement_system(
 	let query_len = query_iter.size_hint();
 
 	for (index, (_, mut transform)) in query_iter.enumerate() {
-		if index == settings.targert_index {
+		if index == settings.target_index {
 			const SPEED: f32 = 10.0;
 			let distance = SPEED * time.delta_seconds();
 			let translation = &mut transform.translation;
@@ -181,10 +176,10 @@ fn wasd_movement_system(
 
 	if keyboard_input.just_pressed(KeyCode::Tab) {
 		if let Some(length) = query_len.1 {
-			if settings.targert_index < length - 1 {
-				settings.targert_index += 1;
+			if settings.target_index < length - 1 {
+				settings.target_index += 1;
 			} else {
-				settings.targert_index = 0;
+				settings.target_index = 0;
 			}
 		}
 	}
@@ -195,7 +190,7 @@ fn toggle_cursor(window: &mut Window, is_enabled: bool) {
 	window.set_cursor_lock_mode(is_enabled);
 }
 
-fn game_state_control(
+fn game_state_control_system(
 	keyboard_input: Res<Input<KeyCode>>,
 	mut windows: ResMut<Windows>,
 	mut state: ResMut<State<GameState>>,
@@ -241,12 +236,12 @@ fn rotate_with_mouse_system(
 	}
 }
 
-// fn text_update_system(diagnostics: Res<Diagnostics>, mut query: Query<Mut<Text>>) {
-// 	for mut text in &mut query.iter() {
-// 			if let Some(fps) = diagnostics.get(FrameTimeDiagnosticsPlugin::FPS) {
-// 					if let Some(average) = fps.average() {
-// 							text.value = format!("FPS: {:.2}", average);
-// 					}
-// 			}
-// 	}
-// }
+fn text_update_system(diagnostics: Res<Diagnostics>, mut query: Query<&mut Text>) {
+	for mut text in query.iter_mut() {
+			if let Some(fps) = diagnostics.get(FrameTimeDiagnosticsPlugin::FPS) {
+					if let Some(average) = fps.average() {
+							text.sections[0].value = format!("FPS: {:.0}", average);
+					}
+			}
+	}
+}
